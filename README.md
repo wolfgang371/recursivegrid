@@ -16,7 +16,7 @@ In addition you can find a sample GUI wrapper (for ImGui) that also abstracts th
 - pixel counting for both elements and optionally also (sub)grid frames
 - automatical resizing of elements
 
-tbd video
+https://github.com/user-attachments/assets/80b9bc63-79d2-4ea2-be8b-4d9116c34e40
 
 ## Installation
 
