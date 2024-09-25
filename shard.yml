@@ -13,6 +13,8 @@ dependencies:
     github: oprypin/crsfml
   imgui:
     github: oprypin/crystal-imgui
+    version: 1.89.9
   imgui-sfml:
     github: oprypin/crystal-imgui-sfml
+    version: 1.89.8
 
