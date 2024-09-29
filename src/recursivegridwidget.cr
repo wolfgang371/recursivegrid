@@ -8,18 +8,30 @@ require "./recursivegrid"
 
 include GUI
 
+# monkey patching because ImGui child windows do odd clipping (see https://github.com/ocornut/imgui/issues/8024)
+module ImGui
+    @@x = ImVec2.new(0,0)
+    def self.myarea_content_region_max=(value : ImVec2)
+        @@x = value
+    end
+    def self.myarea_content_region_max
+        @@x
+    end
+end
+
 module RecursiveGridWidget
 
 abstract class ElementWidget
     abstract def paint : Nil
     def size : ImVec2
-        ImGui.get_window_content_region_max
-        # ImGui.get_window_size
+        # ImGui.get_window_content_region_max
+        ImGui.myarea_content_region_max
     end
     def draw_background(color = ImGui.hsv(0.0, 0.0, 0.3, 1.0))
         dl = ImGui.get_window_draw_list
-        apos = ImGui.get_window_pos
-        dl.add_rect_filled(apos, apos+size, ImGui.get_color_u32(color))
+        pmin = ImGui.get_item_rect_min
+        pmax = pmin + size
+        dl.add_rect_filled(pmin, pmax, ImGui.get_color_u32(color))
     end
     def draw_boundary(color = ImGui.hsv(0.0, 0.0, 0.3, 1.0)) # tbd this gets clipped
         dl = ImGui.get_window_draw_list
@@ -34,7 +46,7 @@ class GridWidget
     ADDER_GENERAL = 4 # px
     # we have three sizes: used (measured, in @feedback_sizes), content and child
     ADDER_CHILD_SIZE = 20 # px, from used to child
-    ADDER_CONTENT_SIZE = -10 # px, from child to content
+    ADDER_CONTENT_SIZE = -3 # px, from child to content
     property draw_grid_frames = false
     # the following two are a bit ugly, but they help mainly for the demo
     getter local_grid = RecursiveGrid::Grid(RecursiveGridWidget::ElementWidget).new
@@ -94,15 +106,18 @@ class GridWidget
         wsize = {0,1}.map {|i| @offsets[i][3*bounding_max[i]+2]} # the size for this frame, as learned from prior frame
         wsize = ImVec2.new(wsize[1], wsize[0]) - wpos # also transform {row,col} to {x,y}
         ImGui.set_cursor_pos(wpos)
-        ImGui.set_next_window_content_size(wsize + ImVec2.new(ADDER_CONTENT_SIZE,ADDER_CONTENT_SIZE)) # to allow children to query size
-        ImGui.begin_child("###{widget.object_id}", wsize, true, ImGuiWindowFlags::NoDecoration|ImGuiWindowFlags::NoNav|ImGuiWindowFlags::NoScrollWithMouse) # noscroll needed, otherwise we have either a too big gap or mouse wheel can scroll
-        # second, the real painting
-        ImGui.group do
-            widget.paint
+        ImGui.dummy(wsize)# + ImVec2.new(ADDER_CONTENT_SIZE,ADDER_CONTENT_SIZE))
+        ImGui.set_cursor_pos(wpos)
+        # since ImGui child windows do odd clipping (see https://github.com/ocornut/imgui/issues/8024), we don't use them anymore
+        ImGui.myarea_content_region_max = wsize + ImVec2.new(ADDER_CONTENT_SIZE,ADDER_CONTENT_SIZE)
+        ImGui.with_id(widget.object_id) do
+            # second, the real painting
+            ImGui.group do
+                widget.paint
+            end
         end
         # third, retrieve the actually used size
         pmin, pmax = ImGui.get_item_rect_min, ImGui.get_item_rect_max
-        ImGui.end_child
         size_feedback = pmax - pmin + ImVec2.new(ADDER_CHILD_SIZE,ADDER_CHILD_SIZE)
         if bounding_min[0] == bounding_max[0] # tbd: currently we only resize according to all non-spanned elements
             @sizes_feedback[0][bounding_min[0]] = {@sizes_feedback[0][bounding_min[0]], size_feedback.y.to_i}.max
