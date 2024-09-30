@@ -2,6 +2,7 @@ require "./framework"
 require "./recursivegrid"
 
 # todos
+# - we could use the DOFs of floating contents of elements (most of the cells)
 # - also resize according to spanned cells (see below)
 # - get rid of border clipping (see below)
 # - define concept to allow center/bottom-aligned painting in a cell
@@ -110,10 +111,13 @@ class GridWidget
         ImGui.set_cursor_pos(wpos)
         # since ImGui child windows do odd clipping (see https://github.com/ocornut/imgui/issues/8024), we don't use them anymore
         ImGui.myarea_content_region_max = wsize + ImVec2.new(ADDER_CONTENT_SIZE,ADDER_CONTENT_SIZE)
-        ImGui.with_id(widget.object_id) do
-            # second, the real painting
-            ImGui.group do
-                widget.paint
+        delta = ImGui.get_cursor_screen_pos - ImGui.get_cursor_pos
+        ImGui.with_clip_rect(delta+wpos, delta+wpos+wsize, true) do
+            ImGui.with_id(widget.object_id) do
+                # second, the real painting
+                ImGui.group do
+                    widget.paint
+                end
             end
         end
         # third, retrieve the actually used size
