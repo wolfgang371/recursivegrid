@@ -43,11 +43,15 @@ end
 
 class GridWidget
     GRID_COLOR = ImGui.hsv(0.0, 1.0, 1.0, 1.0)
-    SUBGRID_SPACER = 5 # px
-    ADDER_GENERAL = 4 # px
-    # we have three sizes: used (measured, in @feedback_sizes), content and child
-    ADDER_CHILD_SIZE = 20 # px, from used to child
-    ADDER_CONTENT_SIZE = -3 # px, from child to content
+    SUBGRID_SPACER = 4 # px, only used when @draw_grid_frames
+    ADDER_GENERAL = 4 # px; outer grid border; should not be larger than SUBGRID_SPACER
+    # we have three sizes: used (measured, in @feedback_sizes), content and element
+    ADDER_ELEMENT_SIZE = 4 # px, element right and bottom extension
+    ADDER_CONTENT_SIZE = -2 # px, from element to content
+    property subgrid_spacer = SUBGRID_SPACER
+    property adder_general = ADDER_GENERAL
+    property adder_element_size = ADDER_ELEMENT_SIZE
+    property adder_content_size = ADDER_CONTENT_SIZE
     property draw_grid_frames = false
     # the following two are a bit ugly, but they help mainly for the demo
     getter local_grid = RecursiveGrid::Grid(RecursiveGridWidget::ElementWidget).new
@@ -66,12 +70,17 @@ class GridWidget
         adapt_size(@sizes[1], s[1], 10) # dito
         calc_grid_sizes
         # calculate joint @offsets (3*(n+1) elements, starts with value 0) out of @sizes (n elements) and @grid_*_sizes (n+1 elements)
-        @offsets = {0,1}.map {|i| mix(@grid_before_sizes[i], @sizes[i], @grid_after_sizes[i]).accumulate(0)}
+        @offsets = {0,1}.map {|i| mix(@grid_before_sizes[i], @sizes[i], @grid_after_sizes[i]).accumulate(@adder_general)}
         open = true
         wsize = ImVec2.new(@offsets[1][-1], @offsets[0][-1])
-        ImGui.set_next_window_content_size(wsize + ImVec2.new(ADDER_CHILD_SIZE,ADDER_CHILD_SIZE)) # seems to need an adder as well
+        ImGui.set_next_window_content_size(wsize + ImVec2.new(adder_element_size,adder_element_size)) # seems to need an adder as well
+        # for tuning:
+        # ImGui.slider_int("subgrid_spacer", pointerof(@subgrid_spacer), -10, 20)
+        # ImGui.slider_int("adder_general", pointerof(@adder_general), -10, 20)
+        # ImGui.slider_int("adder_element_size", pointerof(@adder_element_size), -10, 20)
+        # ImGui.slider_int("adder_content_size", pointerof(@adder_content_size), -10, 20)
 
-        ImGui.begin_child("###{object_id}", wsize + ImVec2.new(ADDER_GENERAL,ADDER_GENERAL), true, ImGuiWindowFlags::NoDecoration|ImGuiWindowFlags::NoNav|ImGuiWindowFlags::NoScrollWithMouse)
+        ImGui.begin_child("###{object_id}", wsize + ImVec2.new(adder_general,adder_general), true, ImGuiWindowFlags::NoDecoration|ImGuiWindowFlags::NoNav|ImGuiWindowFlags::NoScrollWithMouse)
         @sizes_feedback = {Array(Int32).new(@sizes[0].size, 0), Array(Int32).new(@sizes[1].size, 0)} # initialize for learning
         ImGui.push_style_color(ImGuiCol::Border, ImGui.hsv(0, 0, 0, 0)) # to get rid of grey borders
         if @draw_grid_frames
@@ -107,10 +116,10 @@ class GridWidget
         wsize = {0,1}.map {|i| @offsets[i][3*bounding_max[i]+2]} # the size for this frame, as learned from prior frame
         wsize = ImVec2.new(wsize[1], wsize[0]) - wpos # also transform {row,col} to {x,y}
         ImGui.set_cursor_pos(wpos)
-        ImGui.dummy(wsize)# + ImVec2.new(ADDER_CONTENT_SIZE,ADDER_CONTENT_SIZE))
+        ImGui.dummy(wsize)
         ImGui.set_cursor_pos(wpos)
         # since ImGui child windows do odd clipping (see https://github.com/ocornut/imgui/issues/8024), we don't use them anymore
-        ImGui.myarea_content_region_max = wsize + ImVec2.new(ADDER_CONTENT_SIZE,ADDER_CONTENT_SIZE)
+        ImGui.myarea_content_region_max = wsize + ImVec2.new(adder_content_size,adder_content_size)
         delta = ImGui.get_cursor_screen_pos - ImGui.get_cursor_pos
         ImGui.with_clip_rect(delta+wpos, delta+wpos+wsize, true) do
             ImGui.with_id(widget.object_id) do
@@ -122,7 +131,7 @@ class GridWidget
         end
         # third, retrieve the actually used size
         pmin, pmax = ImGui.get_item_rect_min, ImGui.get_item_rect_max
-        size_feedback = pmax - pmin + ImVec2.new(ADDER_CHILD_SIZE,ADDER_CHILD_SIZE)
+        size_feedback = pmax - pmin + ImVec2.new(adder_element_size,adder_element_size)
         if bounding_min[0] == bounding_max[0] # tbd: currently we only resize according to all non-spanned elements
             @sizes_feedback[0][bounding_min[0]] = {@sizes_feedback[0][bounding_min[0]], size_feedback.y.to_i}.max
         end
@@ -138,7 +147,7 @@ class GridWidget
         wsize = ImVec2.new(wsize[1], wsize[0]) - wpos - adder_max # also transform {row,col} to {x,y}
         adder = ImGui.get_cursor_screen_pos - ImGui.get_cursor_pos
         dl = ImGui.get_window_draw_list
-        dl.add_rect(wpos+adder+ImVec2.new(ADDER_GENERAL,ADDER_GENERAL), wpos+wsize+adder, ImGui.get_color_u32(GRID_COLOR))
+        dl.add_rect(wpos+adder, wpos+wsize+adder, ImGui.get_color_u32(GRID_COLOR))
     end
     private def calc_grid_sizes
         s = @grid.size.map {|el| el+1}
@@ -153,14 +162,14 @@ class GridWidget
                 bounding_max = {bounding_max[0]+1, bounding_max[1]+1}
                 delta = gridstack.size - level
                 gridstack.pop(delta).each do |bounding_min, bounding_max| # never < 0, so fine
-                    add_frame_sizes(@grid_before_sizes, current_before_sizes, bounding_min, -SUBGRID_SPACER)
-                    add_frame_sizes(@grid_after_sizes, current_after_sizes, bounding_max, -SUBGRID_SPACER)
+                    add_frame_sizes(@grid_before_sizes, current_before_sizes, bounding_min, -subgrid_spacer)
+                    add_frame_sizes(@grid_after_sizes, current_after_sizes, bounding_max, -subgrid_spacer)
                 end
                 gridstack << {bounding_min, bounding_max}
                 @grid2local_offset[grid] = {ImVec2.new(current_before_sizes[1][bounding_min[1]], current_before_sizes[0][bounding_min[0]]),
                     ImVec2.new(current_after_sizes[1][bounding_max[1]], current_after_sizes[0][bounding_max[0]])}
-                add_frame_sizes(@grid_before_sizes, current_before_sizes, bounding_min, SUBGRID_SPACER)
-                add_frame_sizes(@grid_after_sizes, current_after_sizes, bounding_max, SUBGRID_SPACER)
+                add_frame_sizes(@grid_before_sizes, current_before_sizes, bounding_min, subgrid_spacer)
+                add_frame_sizes(@grid_after_sizes, current_after_sizes, bounding_max, subgrid_spacer)
             end
         end
         (0..1).each {|i| @grid_after_sizes[i].shift} # "after" has a superfluous element at head
